@@ -16,4 +16,4 @@ This project deploys:
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/l3lack-eyes/traefik-n8n-kuma-stack/main/install_stack.sh)
-```bash
+```
