@@ -1,0 +1,28 @@
+http:
+  routers:
+    kuma:
+      rule: "Host(`status.steamchi.online`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: le
+      service: kuma_svc
+
+    n8n:
+      rule: "Host(`n8n.steamchi.online`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: le
+      service: n8n_svc
+
+  services:
+    kuma_svc:
+      loadBalancer:
+        servers:
+          - url: "http://uptime-kuma:3001"
+
+    n8n_svc:
+      loadBalancer:
+        servers:
+          - url: "http://n8n:5678"
