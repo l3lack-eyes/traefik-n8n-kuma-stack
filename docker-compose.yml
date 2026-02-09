@@ -1,0 +1,84 @@
+networks:
+  proxy:
+    name: proxy
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      # No docker provider (IMPORTANT)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+
+      # HTTPS only on 8443
+      - --entrypoints.websecure.address=:8443
+
+      # Let's Encrypt via DNS-01 (Cloudflare)
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.dnschallenge=true
+      - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=10
+
+      # Optional (helps debugging)
+      - --log.level=INFO
+      - --accesslog=false
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+    ports:
+      - "8443:8443"
+    environment:
+      - TZ=Europe/Berlin
+      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
+    volumes:
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - proxy
+    mem_limit: 220m
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - kuma_data:/app/data
+    networks:
+      - proxy
+    expose:
+      - "3001"
+    mem_limit: 300m
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Berlin
+      - DB_TYPE=sqlite
+      - DB_SQLITE_VACUUM_ON_STARTUP=true
+      - N8N_USER_FOLDER=/home/node/.n8n
+
+      - N8N_HOST=n8n.steamchi.online
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - WEBHOOK_URL=https://n8n.steamchi.online:8443/
+
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+      - N8N_LOG_LEVEL=warn
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - proxy
+    expose:
+      - "5678"
+    mem_limit: 1100m
+
+volumes:
+  kuma_data:
+  n8n_data:
