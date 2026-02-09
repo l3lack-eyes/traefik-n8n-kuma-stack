@@ -15,14 +15,5 @@ This project deploys:
 ## Install
 
 ```bash
-chmod +x install_stack.sh
-sudo ./install_stack.sh
-
-Save.
-
----
-
-## 4) Initialize Git repo
-
+bash <(curl -Ls https://raw.githubusercontent.com/l3lack-eyes/traefik-n8n-kuma-stack/main/install_stack.sh)
 ```bash
-git init
