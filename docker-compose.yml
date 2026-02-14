@@ -8,7 +8,7 @@ services:
     container_name: traefik
     restart: unless-stopped
     command:
-      # No docker provider (IMPORTANT)
+      # File provider only (no Docker labels)
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
 
@@ -22,7 +22,6 @@ services:
       - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
       - --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=10
 
-      # Optional (helps debugging)
       - --log.level=INFO
       - --accesslog=false
       - --global.checknewversion=false
@@ -60,12 +59,10 @@ services:
       - DB_TYPE=sqlite
       - DB_SQLITE_VACUUM_ON_STARTUP=true
       - N8N_USER_FOLDER=/home/node/.n8n
-
       - N8N_HOST=n8n.steamchi.online
       - N8N_PROTOCOL=https
       - N8N_PORT=5678
       - WEBHOOK_URL=https://n8n.steamchi.online:8443/
-
       - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
       - EXECUTIONS_DATA_SAVE_ON_ERROR=all
       - EXECUTIONS_DATA_PRUNE=true
@@ -78,6 +75,19 @@ services:
     expose:
       - "5678"
     mem_limit: 1100m
+
+  wzml:
+    build:
+      context: ../wzml/WZML-X
+      dockerfile: Dockerfile
+    container_name: wzml
+    restart: unless-stopped
+    command: bash start.sh
+    expose:
+      - "5000"
+    networks:
+      - proxy
+    mem_limit: 400m
 
 volumes:
   kuma_data:
