@@ -2,19 +2,21 @@ http:
   routers:
     kuma:
       rule: "Host(`status.steamchi.online`)"
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: le
+      entryPoints: [websecure]
+      tls: { certResolver: le }
       service: kuma_svc
 
     n8n:
       rule: "Host(`n8n.steamchi.online`)"
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: le
+      entryPoints: [websecure]
+      tls: { certResolver: le }
       service: n8n_svc
+
+    wzml:
+      rule: "Host(`wzml.steamchi.online`)"
+      entryPoints: [websecure]
+      tls: { certResolver: le }
+      service: wzml_svc
 
   services:
     kuma_svc:
@@ -26,3 +28,8 @@ http:
       loadBalancer:
         servers:
           - url: "http://n8n:5678"
+
+    wzml_svc:
+      loadBalancer:
+        servers:
+          - url: "http://wzml:5000"
