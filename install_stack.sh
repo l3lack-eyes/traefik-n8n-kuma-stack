@@ -47,6 +47,29 @@ echo "==> Creating stack directory at ${STACK_DIR}"
 mkdir -p "${STACK_DIR}"
 cd "${STACK_DIR}"
 
+echo "==> Preparing WZML repository..."
+
+WZML_DIR="/root/wzml/WZML-X"
+
+if [ ! -d "$WZML_DIR" ]; then
+  echo "==> Cloning WZML..."
+  mkdir -p /root/wzml
+  git clone https://github.com/SilentDemonSD/WZML-X.git "$WZML_DIR"
+fi
+
+cd "$WZML_DIR"
+
+echo "==> Fetching latest updates..."
+git fetch --all
+
+echo "==> Switching to wzv3 branch..."
+git checkout wzv3
+
+echo "==> Pulling latest changes..."
+git pull origin wzv3
+
+cd "$STACK_DIR"
+
 echo "==> Writing docker-compose.yml"
 cat > docker-compose.yml <<'YAML'
 networks:
@@ -121,9 +144,10 @@ services:
       - "5678"
     mem_limit: 1100m
 
-  wzml:
     build:
-      context: ../wzml/WZML-X
+      context: /root/wzml/WZML-X
+
+
       dockerfile: Dockerfile
     container_name: wzml
     restart: unless-stopped
