@@ -31,6 +31,7 @@ STACK_DIR="/root/stack"
 DOMAIN="steamchi.online"
 N8N_HOST="n8n.${DOMAIN}"
 KUMA_HOST="status.${DOMAIN}"
+WZML_HOST="wzml.${DOMAIN}"
 
 echo "==> Traefik + Cloudflare DNS-01 + n8n + Uptime Kuma (8443) installer"
 echo
@@ -120,6 +121,22 @@ services:
       - "5678"
     mem_limit: 1100m
 
+  wzml:
+    build:
+      context: ../wzml/WZML-X
+      dockerfile: Dockerfile
+    container_name: wzml
+    restart: unless-stopped
+    command: bash start.sh
+    expose:
+      - "5000"
+    volumes:
+      - /root/config.py:/app/config.py:ro
+    working_dir: /app
+    networks:
+      - proxy
+    mem_limit: 400m
+
 volumes:
   kuma_data:
   n8n_data:
@@ -146,6 +163,14 @@ http:
         certResolver: le
       service: n8n_svc
 
+    wzml:
+      rule: "Host(\`wzml.steamchi.online\`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: le
+      service: wzml_svc
+
   services:
     kuma_svc:
       loadBalancer:
@@ -156,6 +181,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://n8n:5678"
+
+    wzml_svc:
+      loadBalancer:
+        servers:
+          - url: "http://wzml:5000"
 YAML
 
 echo "==> Writing .env"
@@ -184,3 +214,5 @@ echo
 echo "URLs:"
 echo "  https://${KUMA_HOST}:8443"
 echo "  https://${N8N_HOST}:8443"
+echo "  https://${WZML_HOST}:5000"
+
