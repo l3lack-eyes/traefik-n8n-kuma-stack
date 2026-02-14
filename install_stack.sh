@@ -1,4 +1,3 @@
-cat > install_stack.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
