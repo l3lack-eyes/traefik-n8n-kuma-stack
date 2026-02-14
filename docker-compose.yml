@@ -87,7 +87,12 @@ services:
       - "5000"
     networks:
       - proxy
+    volumes:
+      # Mount your host config into the container
+      - /root/config.py:/app/config.py:ro
+    working_dir: /app
     mem_limit: 400m
+
 
 volumes:
   kuma_data:
