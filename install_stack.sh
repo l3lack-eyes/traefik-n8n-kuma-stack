@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ----------------------------
+# Install Docker if missing
+# ----------------------------
+if ! command -v docker >/dev/null 2>&1; then
+  echo "==> Docker not found. Installing Docker..."
+
+  curl -fsSL https://get.docker.com | sh
+
+  echo "==> Enabling Docker service..."
+  systemctl enable --now docker
+else
+  echo "==> Docker already installed."
+fi
+
+# ----------------------------
+# Install Docker Compose plugin if missing
+# ----------------------------
+if ! docker compose version >/dev/null 2>&1; then
+  echo "==> Docker Compose plugin not found. Installing..."
+
+  apt-get update
+  apt-get install -y docker-compose-plugin
+else
+  echo "==> Docker Compose plugin already available."
+fi
+
 STACK_DIR="/root/stack"
 DOMAIN="steamchi.online"
 N8N_HOST="n8n.${DOMAIN}"
