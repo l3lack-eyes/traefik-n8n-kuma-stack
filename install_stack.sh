@@ -1,77 +1,81 @@
+cat > install_stack.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ----------------------------
+# Must be root
+if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+  echo "Run as root:"
+  echo "  sudo bash <(curl -Ls https://raw.githubusercontent.com/l3lack-eyes/traefik-n8n-kuma-stack/main/install_stack.sh)"
+  exit 1
+fi
+
+# Base deps
+if ! command -v curl >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y curl
+fi
+if ! command -v git >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y git
+fi
+
 # Install Docker if missing
-# ----------------------------
 if ! command -v docker >/dev/null 2>&1; then
-  echo "==> Docker not found. Installing Docker..."
-
+  echo "==> Docker not found. Installing..."
   curl -fsSL https://get.docker.com | sh
-
-  echo "==> Enabling Docker service..."
   systemctl enable --now docker
 else
   echo "==> Docker already installed."
 fi
 
-# ----------------------------
-# Install Docker Compose plugin if missing
-# ----------------------------
+# Install compose plugin if missing
 if ! docker compose version >/dev/null 2>&1; then
-  echo "==> Docker Compose plugin not found. Installing..."
-
+  echo "==> Installing docker compose plugin..."
   apt-get update
   apt-get install -y docker-compose-plugin
-else
-  echo "==> Docker Compose plugin already available."
 fi
 
 STACK_DIR="/root/stack"
 DOMAIN="steamchi.online"
+
 N8N_HOST="n8n.${DOMAIN}"
 KUMA_HOST="status.${DOMAIN}"
 WZML_HOST="wzml.${DOMAIN}"
 
-echo "==> Traefik + Cloudflare DNS-01 + n8n + Uptime Kuma (8443) installer"
+echo "==> Traefik + Cloudflare DNS-01 + n8n + Uptime Kuma + WZML (8443)"
 echo
 
 read -rp "ACME email (Let's Encrypt): " ACME_EMAIL
 read -rsp "Cloudflare DNS API Token: " CF_TOKEN
 echo
-
 read -rp "Timezone (default: Europe/Berlin): " TZ_INPUT || true
-TZ="${TZ_INPUT:-Asia/Tehran}"
+TZ="${TZ_INPUT:-Europe/Berlin}"
+
+# WZML repo (wzv3 head)
+echo "==> Preparing WZML repo (wzv3)..."
+WZML_DIR="/root/wzml/WZML-X"
+if [ ! -d "$WZML_DIR/.git" ]; then
+  mkdir -p /root/wzml
+  git clone https://github.com/SilentDemonSD/WZML-X.git "$WZML_DIR"
+fi
+cd "$WZML_DIR"
+git fetch --all
+git checkout wzv3
+git pull origin wzv3
+cd /root
+
+# Your config.py must exist
+if [ ! -f /root/config.py ]; then
+  echo "ERROR: /root/config.py not found. Create it first, then re-run."
+  exit 1
+fi
 
 echo "==> Creating stack directory at ${STACK_DIR}"
 mkdir -p "${STACK_DIR}"
 cd "${STACK_DIR}"
 
-echo "==> Preparing WZML repository..."
-
-WZML_DIR="/root/wzml/WZML-X"
-
-if [ ! -d "$WZML_DIR" ]; then
-  echo "==> Cloning WZML..."
-  mkdir -p /root/wzml
-  git clone https://github.com/SilentDemonSD/WZML-X.git "$WZML_DIR"
-fi
-
-cd "$WZML_DIR"
-
-echo "==> Fetching latest updates..."
-git fetch --all
-
-echo "==> Switching to wzv3 branch..."
-git checkout wzv3
-
-echo "==> Pulling latest changes..."
-git pull origin wzv3
-
-cd "$STACK_DIR"
-
 echo "==> Writing docker-compose.yml"
-cat > docker-compose.yml <<'YAML'
+cat > docker-compose.yml <<YAML
 networks:
   proxy:
     name: proxy
@@ -85,7 +89,7 @@ services:
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       - --entrypoints.websecure.address=:8443
-      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.email=\${ACME_EMAIL}
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.le.acme.dnschallenge=true
       - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
@@ -97,8 +101,8 @@ services:
     ports:
       - "8443:8443"
     environment:
-      - TZ=${TZ}
-      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
+      - TZ=\${TZ}
+      - CLOUDFLARE_DNS_API_TOKEN=\${CLOUDFLARE_DNS_API_TOKEN}
     volumes:
       - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
       - ./letsencrypt:/letsencrypt
@@ -123,7 +127,7 @@ services:
     container_name: n8n
     restart: unless-stopped
     environment:
-      - TZ=${TZ}
+      - TZ=\${TZ}
       - DB_TYPE=sqlite
       - DB_SQLITE_VACUUM_ON_STARTUP=true
       - N8N_USER_FOLDER=/home/node/.n8n
@@ -144,10 +148,9 @@ services:
       - "5678"
     mem_limit: 1100m
 
+  wzml:
     build:
       context: /root/wzml/WZML-X
-
-
       dockerfile: Dockerfile
     container_name: wzml
     restart: unless-stopped
@@ -173,26 +176,20 @@ http:
   routers:
     kuma:
       rule: "Host(\`${KUMA_HOST}\`)"
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: le
+      entryPoints: [websecure]
+      tls: { certResolver: le }
       service: kuma_svc
 
     n8n:
       rule: "Host(\`${N8N_HOST}\`)"
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: le
+      entryPoints: [websecure]
+      tls: { certResolver: le }
       service: n8n_svc
 
     wzml:
-      rule: "Host(\`wzml.steamchi.online\`)"
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: le
+      rule: "Host(\`${WZML_HOST}\`)"
+      entryPoints: [websecure]
+      tls: { certResolver: le }
       service: wzml_svc
 
   services:
@@ -217,26 +214,25 @@ cat > .env <<ENV
 ACME_EMAIL=${ACME_EMAIL}
 CLOUDFLARE_DNS_API_TOKEN=${CF_TOKEN}
 TZ=${TZ}
-N8N_HOST=${N8N_HOST}
 ENV
 
-echo "==> Preparing letsencrypt/acme.json (permissions matter)"
+echo "==> Preparing letsencrypt/acme.json"
 rm -rf ./letsencrypt
 mkdir -p ./letsencrypt
 touch ./letsencrypt/acme.json
 chmod 600 ./letsencrypt/acme.json
 
-echo "==> Starting stack"
+echo "==> Starting stack (build included for WZML)"
 docker compose down || true
-docker compose up -d
+docker compose up -d --build
 
 echo
 echo "==> Done."
-echo "Logs:"
-echo "  docker compose logs -f --tail=200 traefik"
-echo
 echo "URLs:"
 echo "  https://${KUMA_HOST}:8443"
 echo "  https://${N8N_HOST}:8443"
-echo "  https://${WZML_HOST}:5000"
-
+echo "  https://${WZML_HOST}:8443"
+echo
+echo "Logs:"
+echo "  docker compose logs -f --tail=200 traefik"
+EOF
