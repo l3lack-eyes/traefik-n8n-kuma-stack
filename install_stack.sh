@@ -236,3 +236,5 @@ echo
 echo "Logs:"
 echo "  docker compose logs -f --tail=200 traefik"
 EOF
+
+
