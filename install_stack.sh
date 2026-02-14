@@ -1,57 +1,89 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Must be root
+# ---- Must be root ----
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-  echo "Run as root:"
-  echo "  sudo bash <(curl -Ls https://raw.githubusercontent.com/l3lack-eyes/traefik-n8n-kuma-stack/main/install_stack.sh)"
+  echo "Run as root with:"
+  echo "  curl -Ls https://raw.githubusercontent.com/l3lack-eyes/traefik-n8n-kuma-stack/main/install_stack.sh | sudo bash"
   exit 1
 fi
 
-# Base deps
-if ! command -v curl >/dev/null 2>&1; then
-  apt-get update
-  apt-get install -y curl
+# ---- Helpers ----
+need_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+prompt() { # prompt "Text" varname [silent]
+  local text="$1"
+  local var="$2"
+  local silent="${3:-0}"
+  local val=""
+  while true; do
+    if [ "$silent" = "1" ]; then
+      read -rsp "$text" val </dev/tty || true
+      echo
+    else
+      read -rp "$text" val </dev/tty || true
+    fi
+    if [ -n "${val}" ]; then
+      printf -v "$var" '%s' "$val"
+      return 0
+    fi
+    echo "Value cannot be empty. Try again."
+  done
+}
+
+# ---- Base deps ----
+export DEBIAN_FRONTEND=noninteractive
+
+if ! need_cmd apt-get; then
+  echo "ERROR: This installer currently supports Debian/Ubuntu systems (apt-get not found)."
+  exit 1
 fi
-if ! command -v git >/dev/null 2>&1; then
-  apt-get update
+
+apt-get update -y >/dev/null 2>&1 || true
+apt-get install -y ca-certificates curl gnupg >/dev/null 2>&1 || true
+
+if ! need_cmd git; then
+  echo "==> Installing git..."
+  apt-get update -y
   apt-get install -y git
 fi
 
-# Install Docker if missing
-if ! command -v docker >/dev/null 2>&1; then
-  echo "==> Docker not found. Installing..."
+# ---- Install Docker if missing ----
+if ! need_cmd docker; then
+  echo "==> Docker not found. Installing Docker..."
   curl -fsSL https://get.docker.com | sh
-  systemctl enable --now docker
+  systemctl enable --now docker || true
 else
   echo "==> Docker already installed."
 fi
 
-# Install compose plugin if missing
+# ---- Install Docker Compose plugin if missing ----
 if ! docker compose version >/dev/null 2>&1; then
   echo "==> Installing docker compose plugin..."
-  apt-get update
+  apt-get update -y
   apt-get install -y docker-compose-plugin
+else
+  echo "==> Docker compose plugin already available."
 fi
 
+# ---- Config ----
 STACK_DIR="/root/stack"
 DOMAIN="steamchi.online"
-
 N8N_HOST="n8n.${DOMAIN}"
 KUMA_HOST="status.${DOMAIN}"
 WZML_HOST="wzml.${DOMAIN}"
 
-echo "==> Traefik + Cloudflare DNS-01 + n8n + Uptime Kuma + WZML (8443)"
+echo
+echo "==> Traefik + Cloudflare DNS-01 + n8n + Uptime Kuma + WZML (HTTPS on :8443)"
 echo
 
-read -rp "ACME email (Let's Encrypt): " ACME_EMAIL
-read -rsp "Cloudflare DNS API Token: " CF_TOKEN
-echo
-read -rp "Timezone (default: Europe/Berlin): " TZ_INPUT || true
+prompt "ACME email (Let's Encrypt): " ACME_EMAIL 0
+prompt "Cloudflare DNS API Token: " CF_TOKEN 1
+read -rp "Timezone (default: Europe/Berlin): " TZ_INPUT </dev/tty || true
 TZ="${TZ_INPUT:-Europe/Berlin}"
 
-# WZML repo (wzv3 head)
-echo "==> Preparing WZML repo (wzv3)..."
+# ---- WZML repo (wzv3 HEAD) ----
+echo "==> Preparing WZML repo (wzv3 HEAD)..."
 WZML_DIR="/root/wzml/WZML-X"
 if [ ! -d "$WZML_DIR/.git" ]; then
   mkdir -p /root/wzml
@@ -63,12 +95,15 @@ git checkout wzv3
 git pull origin wzv3
 cd /root
 
-# Your config.py must exist
+# ---- Your config.py must exist ----
 if [ ! -f /root/config.py ]; then
-  echo "ERROR: /root/config.py not found. Create it first, then re-run."
+  echo "ERROR: /root/config.py not found."
+  echo "Create it first:"
+  echo "  nano /root/config.py"
   exit 1
 fi
 
+# ---- Write stack ----
 echo "==> Creating stack directory at ${STACK_DIR}"
 mkdir -p "${STACK_DIR}"
 cd "${STACK_DIR}"
@@ -222,7 +257,7 @@ touch ./letsencrypt/acme.json
 chmod 600 ./letsencrypt/acme.json
 
 echo "==> Starting stack (build included for WZML)"
-docker compose down || true
+docker compose down --remove-orphans >/dev/null 2>&1 || true
 docker compose up -d --build
 
 echo
@@ -233,7 +268,4 @@ echo "  https://${N8N_HOST}:8443"
 echo "  https://${WZML_HOST}:8443"
 echo
 echo "Logs:"
-echo "  docker compose logs -f --tail=200 traefik"
-EOF
-
-
+echo "  cd /root/stack && docker compose logs -f --tail=200 traefik"
